@@ -1,0 +1,37 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: arvyax-backend
+    ports:
+      - "5000:5000"
+    env_file: .env                      # root-level .env (copy from backend/.env.example)
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - FRONTEND_URL=http://localhost:3000
+      - DB_PATH=/app/data/journal.db
+    volumes:
+      - journal-db:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: arvyax-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  journal-db:
