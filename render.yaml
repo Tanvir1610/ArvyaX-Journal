@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: arvyax-journal-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: FRONTEND_URL
+        value: "*"           # update to your frontend URL after deploying
+      - key: ANTHROPIC_API_KEY
+        sync: false          # Render will prompt you to enter this secret
+      - key: DB_PATH
+        value: ./data/journal.db
+    disk:
+      name: journal-db
+      mountPath: /opt/render/project/src/backend/data
+      sizeGB: 1
