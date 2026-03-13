@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { createEntry, getEntries, analyzeEntry, getInsights } from './api/journal.js';
+import { ping, createEntry, getEntries, analyzeEntry, getInsights } from './api/journal.js';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const AMBIENCES = [
   { value: 'forest',   emoji: '🌲', label: 'Forest'   },
   { value: 'ocean',    emoji: '🌊', label: 'Ocean'    },
@@ -24,6 +23,55 @@ const fmt = (iso) =>
     hour: '2-digit', minute: '2-digit',
   });
 
+// ── Server status banner ──────────────────────────────────────────────────────
+function ServerStatus() {
+  // 'checking' | 'online' | 'waking' | 'offline'
+  const [status, setStatus] = useState('checking');
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer;
+
+    const check = async () => {
+      try {
+        await ping();
+        if (!cancelled) setStatus('online');
+      } catch {
+        if (!cancelled) {
+          setStatus(prev => prev === 'checking' ? 'waking' : 'offline');
+          // Retry every 8 seconds while waking
+          setAttempt(a => a + 1);
+          timer = setTimeout(check, 8000);
+        }
+      }
+    };
+
+    check();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, []);
+
+  if (status === 'online') return null; // hide when OK
+
+  const messages = {
+    checking: { bg: '#1a2e3a', border: '#2a5a7a', color: '#7ac8f0', icon: '🔄', text: 'Connecting to server…' },
+    waking:   { bg: '#2e2a1a', border: '#7a5a2a', color: '#f0c870', icon: '⏳', text: `Server is waking up on Render (free tier sleeps after inactivity). Usually takes 30–60 seconds… retry ${attempt}` },
+    offline:  { bg: '#2e1a1a', border: '#7a2a2a', color: '#f09090', icon: '❌', text: 'Server unreachable. Check that the Render backend is deployed and running.' },
+  };
+
+  const m = messages[status];
+  return (
+    <div style={{
+      background: m.bg, border: `1px solid ${m.border}`, color: m.color,
+      borderRadius: 8, padding: '12px 18px', marginBottom: 20,
+      fontSize: 14, display: 'flex', alignItems: 'center', gap: 10,
+    }}>
+      <span style={{ fontSize: 18 }}>{m.icon}</span>
+      <span>{m.text}</span>
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
   const [userId, setUserId] = useState('user_001');
@@ -32,7 +80,7 @@ export default function App() {
 
   const notify = (type, msg) => {
     setNote({ type, msg });
-    setTimeout(() => setNote(null), 4000);
+    setTimeout(() => setNote(null), 5000);
   };
 
   return (
@@ -40,6 +88,7 @@ export default function App() {
       <Header userId={userId} setUserId={setUserId} />
       <Tabs tab={tab} setTab={setTab} />
       <main className="main">
+        <ServerStatus />
         {note && (
           <div className={`banner ${note.type}`}>
             <span>{note.msg}</span>
@@ -122,8 +171,7 @@ function WriteTab({ userId, notify }) {
       notify('success', '✅ Journal entry saved successfully!');
       setTimeout(() => setOk(false), 3000);
     } catch (e) {
-      const msg = e.response?.data?.error ?? e.message ?? 'Failed to save.';
-      notify('error', `❌ ${msg} — Is the backend running?`);
+      notify('error', e.message ?? 'Failed to save entry.');
     } finally {
       setSaving(false);
     }
@@ -186,7 +234,7 @@ function EntriesTab({ userId, notify }) {
       const data = await getEntries(userId);
       setEntries(data.entries ?? []);
     } catch (e) {
-      notify('error', 'Could not load entries. Check your connection.');
+      notify('error', e.message ?? 'Could not load entries.');
     } finally {
       setLoading(false);
     }
@@ -203,9 +251,9 @@ function EntriesTab({ userId, notify }) {
           ? { ...e, analysis: { ...result, analyzedAt: new Date().toISOString() } }
           : e
       ));
-      notify('success', `Emotion detected: "${result.emotion}"${result.cached ? ' ⚡ (cached)' : ''}`);
+      notify('success', `Emotion detected: "${result.emotion}"${result.cached ? ' ⚡ cached' : ''}`);
     } catch (e) {
-      notify('error', e.response?.data?.error ?? 'Analysis failed. Check your API key.');
+      notify('error', e.message ?? 'Analysis failed.');
     } finally {
       setAnalyzing(null);
     }
@@ -259,14 +307,10 @@ function AnalysisPanel({ analysis }) {
     ? analysis.keywords
     : JSON.parse(analysis.keywords ?? '[]');
   const color = emotionColor(analysis.emotion);
-
   return (
     <div className="analysis">
       <div className="analysis-head">
-        <span
-          className="emotion"
-          style={{ color, borderColor: color, background: color + '22' }}
-        >
+        <span className="emotion" style={{ color, borderColor: color, background: color + '22' }}>
           {analysis.emotion}
         </span>
         {analysis.cached && <span className="cached-pill">⚡ cached</span>}
@@ -288,8 +332,8 @@ function InsightsTab({ userId, notify }) {
     setLoading(true);
     try {
       setData(await getInsights(userId));
-    } catch {
-      notify('error', 'Could not load insights.');
+    } catch (e) {
+      notify('error', e.message ?? 'Could not load insights.');
     } finally {
       setLoading(false);
     }
@@ -298,7 +342,6 @@ function InsightsTab({ userId, notify }) {
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <div className="spinner">✨ Loading insights…</div>;
-
   if (!data || data.totalEntries === 0) return (
     <div className="empty">
       <span>🌿</span>
