@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const BACKEND = import.meta.env.VITE_API_URL || 'https://arvyax-journal.onrender.com';
+
 const http = axios.create({
-  baseURL: '/api',
+  baseURL: `${BACKEND}/api`,
   timeout: 30_000,
   headers: { 'Content-Type': 'application/json' },
 });

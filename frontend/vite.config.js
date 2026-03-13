@@ -5,10 +5,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    // Proxy only used in local dev (when VITE_API_URL is not set)
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'https://arvyax-journal.onrender.com',
         changeOrigin: true,
+        secure: true,
       },
     },
   },
